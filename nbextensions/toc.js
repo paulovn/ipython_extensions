@@ -1,18 +1,13 @@
 // adapted from https://gist.github.com/magican/5574556
-// modified to fix TOC nesting (sublists inside <li>)
+// modified to:
+// - fix TOC nesting (sublists inside <li>),
+// - choose between numbered/unnumbered lists (depending on whether the
+//   headings are already numbered or not)
 
-define(["require", "jquery", "base/js/namespace"], function (require, $, IPython) {
+define( ["require", "jquery", "base/js/namespace"],
+	function (require, $, IPython) {
+
   "use strict";
-
-  var make_link = function (h) {
-    var a = $("<a/>");
-    a.attr("href", '#' + h.attr('id'));
-    // get the text *excluding* the link text, whatever it may be
-    var hclone = h.clone();
-    hclone.children().remove();
-    a.text(hclone.text());
-    return a;
-  };
 
   var create_toc_div = function () {
     var toc_wrapper = $('<div id="toc-wrapper"/>')
@@ -66,36 +61,54 @@ define(["require", "jquery", "base/js/namespace"], function (require, $, IPython
       create_toc_div();
     }
   
+    // Traverse all headings, check if they are numbered and collect data
+    var numreg = /^\d[.\d]*\s/;
+    var hasNumbers = true;
+    var hdrList = new Array();
+    $("#notebook").find(":header").map( function(i,h) {
+      var hLevel = parseInt( h.nodeName.substring(1) );
+      var hTitle = $(h).contents().filter( function() {return this.nodeType==3;} ).text();
+      if( hLevel > 1 )	// we ignore if <H1> has numbers or not
+	hasNumbers &= numreg.test( hTitle );
+      hdrList.push( [ hLevel, h.id, hTitle ] );
+      //alert( [i,hLevel,h.tagName,h.id,hTitle,numreg.test(hTitle)].join('|') );
+    } );
+    //alert( hdrList.toString() );
+
+    // Decide if we will use numbered or number-less lists
+    var listClass = hasNumbers ? 'toc-item-noc' : 'toc-item';
+
+    // Initialize the container
     var ol = $("<ol/>");
-    ol.addClass("toc-item");
+    ol.addClass( listClass );
     $("#toc").empty().append(ol);
+
+    // Loop through all the collected headers and create the ToC
     var depth = 1;
     var li;
-    
-    $("#notebook").find(":header").map(function(i, h) {
-      var level = parseInt(h.tagName.slice(1), 10);
-      // skip below threshold
-      if (level > threshold) return;
-      // skip headings with no ID to link to
-      if (!h.id) return;
-      //alert( level + ':' + h.id );
-
+    for( var idx=0; idx<hdrList.length; idx++ ) {
+      var hdr = hdrList[idx];
+      var level = hdr[0];
+      // skip below threshold, or headings with no ID to link to
+      if (level > threshold || !hdr[1])
+	continue;
       // walk down levels
       for (; depth < level; depth++) {
         var new_ol = $("<ol/>");
-        new_ol.addClass("toc-item");
+        new_ol.addClass(listClass);
         li.append(new_ol);
         ol = new_ol;
       }
       // walk up levels
       for (; depth > level; depth--) {
-	// up twice: the enclosing <ol> and the <li> it was  inserted in
+	// up twice: the enclosing <ol> and the <li> it was inserted in
         ol = ol.parent().parent();
       }
-      //
-      li = $("<li/>").append( make_link($(h)) );
+      // insert the ToC element
+      var a = $("<a/>").attr( "href", '#'+hdr[1] ).text( hdr[2] );
+      li = $("<li/>").append( a );
       ol.append( li );
-    });
+    }
 
     $(window).resize(function(){
       $('#toc').css({maxHeight: $(window).height() - 200});
